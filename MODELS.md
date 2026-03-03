@@ -1,6 +1,6 @@
 # Supported Models
 
-llmfit ships with a curated database of 98 LLM models from HuggingFace. All memory estimates assume Q4_K_M quantization (0.5 bytes per parameter) unless noted otherwise.
+llmfit ships with a curated database of 106 LLM models from HuggingFace. All memory estimates assume Q4_K_M quantization (0.5 bytes per parameter) unless noted otherwise.
 
 ### 01.ai
 
@@ -14,14 +14,22 @@ llmfit ships with a curated database of 98 LLM models from HuggingFace. All memo
 | Model | Parameters | Quantization | Context | Use Case |
 |-------|-----------|--------------|---------|----------|
 | [Qwen/Qwen3-0.6B](https://huggingface.co/Qwen/Qwen3-0.6B) | 600M | Q4_K_M | 40k | Lightweight, edge deployment |
+| [Qwen/Qwen3.5-0.8B](https://huggingface.co/Qwen/Qwen3.5-0.8B) | 873M | Q4_K_M | 256k | Multimodal, vision and text |
+| [Qwen/Qwen3.5-0.8B-Base](https://huggingface.co/Qwen/Qwen3.5-0.8B-Base) | 873M | Q4_K_M | 256k | Multimodal, vision and text |
 | [Qwen/Qwen2.5-Coder-1.5B-Instruct](https://huggingface.co/Qwen/Qwen2.5-Coder-1.5B-Instruct) | 1.5B | Q4_K_M | 32k | Code generation and completion |
 | [Qwen/Qwen3-1.7B](https://huggingface.co/Qwen/Qwen3-1.7B) | 1.7B | Q4_K_M | 40k | Lightweight, edge deployment |
+| [Qwen/Qwen3.5-2B](https://huggingface.co/Qwen/Qwen3.5-2B) | 2.3B | Q4_K_M | 256k | Multimodal, vision and text |
+| [Qwen/Qwen3.5-2B-Base](https://huggingface.co/Qwen/Qwen3.5-2B-Base) | 2.3B | Q4_K_M | 256k | Multimodal, vision and text |
 | [Qwen/Qwen2.5-VL-3B-Instruct](https://huggingface.co/Qwen/Qwen2.5-VL-3B-Instruct) | 3.8B | Q4_K_M | 32k | Multimodal, vision and text |
 | [Qwen/Qwen3-4B](https://huggingface.co/Qwen/Qwen3-4B) | 4.0B | Q4_K_M | 40k | General purpose text generation |
+| [Qwen/Qwen3.5-4B](https://huggingface.co/Qwen/Qwen3.5-4B) | 4.7B | Q4_K_M | 256k | Multimodal, vision and text |
+| [Qwen/Qwen3.5-4B-Base](https://huggingface.co/Qwen/Qwen3.5-4B-Base) | 4.7B | Q4_K_M | 256k | Multimodal, vision and text |
 | [Qwen/Qwen2.5-7B-Instruct](https://huggingface.co/Qwen/Qwen2.5-7B-Instruct) | 7.6B | Q4_K_M | 32k | Instruction following, chat |
 | [Qwen/Qwen2.5-Coder-7B-Instruct](https://huggingface.co/Qwen/Qwen2.5-Coder-7B-Instruct) | 7.6B | Q4_K_M | 32k | Code generation and completion |
 | [Qwen/Qwen3-8B](https://huggingface.co/Qwen/Qwen3-8B) | 8.2B | Q4_K_M | 40k | General purpose text generation |
 | [Qwen/Qwen2.5-VL-7B-Instruct](https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct) | 8.3B | Q4_K_M | 32k | Multimodal, vision and text |
+| [Qwen/Qwen3.5-9B](https://huggingface.co/Qwen/Qwen3.5-9B) | 9.7B | Q4_K_M | 256k | Multimodal, vision and text |
+| [Qwen/Qwen3.5-9B-Base](https://huggingface.co/Qwen/Qwen3.5-9B-Base) | 9.7B | Q4_K_M | 256k | Multimodal, vision and text |
 | [Qwen/Qwen2.5-14B-Instruct](https://huggingface.co/Qwen/Qwen2.5-14B-Instruct) | 14.8B | Q4_K_M | 128k | Instruction following, chat |
 | [Qwen/Qwen3-14B](https://huggingface.co/Qwen/Qwen3-14B) | 14.8B | Q4_K_M | 128k | General purpose text generation |
 | [Qwen/Qwen2.5-Coder-14B-Instruct](https://huggingface.co/Qwen/Qwen2.5-Coder-14B-Instruct) | 14.8B | Q4_K_M | 32k | Code generation and completion |
