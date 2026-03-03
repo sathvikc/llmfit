@@ -5,6 +5,7 @@
 #
 # Downloads the latest llmfit release from GitHub and installs
 # the binary to /usr/local/bin (or ~/.local/bin with --local or if no sudo).
+# Supports piped execution: sudo prompts read from /dev/tty when stdin is a pipe.
 
 set -e
 
@@ -139,10 +140,17 @@ install() {
     elif [ -w /usr/local/bin ]; then
         # /usr/local/bin is writable without sudo
         INSTALL_DIR="/usr/local/bin"
-    elif command -v sudo >/dev/null 2>&1 && [ -t 0 ]; then
-        # sudo is available and we're in an interactive terminal
+    elif command -v sudo >/dev/null 2>&1; then
+        # sudo is available — use /dev/tty for password prompt when stdin is a pipe
         info "Installing to /usr/local/bin (requires sudo)..."
-        if sudo mv "$BIN" "/usr/local/bin/${BINARY}"; then
+        if [ -t 0 ]; then
+            SUDO_ASKPASS="" sudo mv "$BIN" "/usr/local/bin/${BINARY}"
+        elif [ -e /dev/tty ]; then
+            SUDO_ASKPASS="" sudo mv "$BIN" "/usr/local/bin/${BINARY}" </dev/tty
+        else
+            false
+        fi
+        if [ $? -eq 0 ]; then
             info "Installed ${BINARY} to /usr/local/bin/${BINARY}"
             return
         else
