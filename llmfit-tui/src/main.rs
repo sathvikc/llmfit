@@ -1206,6 +1206,7 @@ mod tests {
                 active_parameters: None,
                 release_date: Some("2025-01-01".to_string()),
                 gguf_sources: vec![],
+                capabilities: vec![],
             },
             fit_level,
             run_mode: RunMode::Gpu,
