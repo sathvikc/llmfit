@@ -3,6 +3,12 @@
 <p align="center">
   <img src="assets/icon.svg" alt="llmfit icon" width="128" height="128">
 </p>
+
+<p align="center">
+  <b>English</b> ·
+  <a href="README.zh.md">中文</a>
+</p>
+
 <p align="center">
   <a href="https://github.com/AlexsJones/llmfit/actions/workflows/ci.yml"><img src="https://github.com/AlexsJones/llmfit/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://crates.io/crates/llmfit"><img src="https://img.shields.io/crates/v/llmfit.svg" alt="Crates.io"></a>
