@@ -2496,26 +2496,30 @@ fn draw_status_bar(frame: &mut Frame, app: &App, area: Rect, tc: &ThemeColors) {
         .split(area);
 
     // Row 0: selected model full name
-    let model_line = if !app.show_detail && !app.show_compare && !app.show_multi_compare && !app.show_plan {
-        if let Some(&idx) = app.filtered_fits.get(app.selected_row) {
-            let fit = &app.all_fits[idx];
-            Line::from(vec![
-                Span::styled(" ▶ ", Style::default().fg(tc.accent).bold()),
-                Span::styled(
-                    fit.model.name.clone(),
-                    Style::default().fg(tc.fg).add_modifier(Modifier::BOLD),
-                ),
-                Span::styled(
-                    format!("  {}  {}", fit.model.parameter_count, fit.model.provider),
+    let model_line =
+        if !app.show_detail && !app.show_compare && !app.show_multi_compare && !app.show_plan {
+            if let Some(&idx) = app.filtered_fits.get(app.selected_row) {
+                let fit = &app.all_fits[idx];
+                Line::from(vec![
+                    Span::styled(" ▶ ", Style::default().fg(tc.accent).bold()),
+                    Span::styled(
+                        fit.model.name.clone(),
+                        Style::default().fg(tc.fg).add_modifier(Modifier::BOLD),
+                    ),
+                    Span::styled(
+                        format!("  {}  {}", fit.model.parameter_count, fit.model.provider),
+                        Style::default().fg(tc.muted),
+                    ),
+                ])
+            } else {
+                Line::from(Span::styled(
+                    " No model selected",
                     Style::default().fg(tc.muted),
-                ),
-            ])
+                ))
+            }
         } else {
-            Line::from(Span::styled(" No model selected", Style::default().fg(tc.muted)))
-        }
-    } else {
-        Line::from("")
-    };
+            Line::from("")
+        };
     frame.render_widget(Paragraph::new(model_line), rows[0]);
 
     // Row 1: keybindings (with download progress if active)
