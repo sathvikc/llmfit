@@ -24,7 +24,9 @@ A terminal tool that right-sizes LLM models to your system's RAM, CPU, and GPU. 
 
 Ships with an interactive TUI (default) and a classic CLI mode. Supports multi-GPU setups, MoE architectures, dynamic quantization selection, speed estimation, and local runtime providers (Ollama, llama.cpp, MLX, Docker Model Runner, LM Studio).
 
-**New: [Download Manager](#download-manager-d) (`D`), [Advanced Configuration](#advanced-configuration-a) (`A`), and [Hardware Simulation](#hardware-simulation-s)** — Press `D` to manage downloads, view history, delete models, and configure the download directory. Press `A` to tune TPS efficiency, run mode factors, and scoring weights. Press `S` to simulate different hardware.
+**New: [Community Benchmarks](#community-benchmarks-b) (`b`)** — See real-world tok/s, TTFT, and VRAM usage from other users running the same hardware as you. Powered by [localmaxxing.com](https://localmaxxing.com), this bridges the gap between estimated and actual performance.
+
+Also: [Download Manager](#download-manager-d) (`D`), [Advanced Configuration](#advanced-configuration-a) (`A`), and [Hardware Simulation](#hardware-simulation-s) — Press `D` to manage downloads, view history, delete models, and configure the download directory. Press `A` to tune TPS efficiency, run mode factors, and scoring weights. Press `S` to simulate different hardware.
 
 > **Sister projects:**
 > - [sympozium](https://github.com/sympozium-ai/sympozium/) — managing agents in Kubernetes.
@@ -130,6 +132,7 @@ Launches the interactive terminal UI. Your system specs (CPU, RAM, GPU name, VRA
 | `R`                        | Open runtime/backend filter popup (llama.cpp, MLX, vLLM)             |
 | `S`                        | Open hardware simulation popup (override RAM/VRAM/CPU)                |
 | `A`                        | Open advanced configuration popup (tune efficiency, run mode factors) |
+| `b`                        | Open community benchmarks view (localmaxxing.com)                     |
 | `h`                        | Open help popup (all key bindings)                                    |
 | `m`                        | Mark selected model for compare                                       |
 | `c`                        | Open compare view (marked vs selected)                                |
@@ -265,6 +268,47 @@ Use `Tab` / `Shift-Tab` to cycle focus between sections.
 | `Esc` / `D` / `q`    | Close and return to the model table               |
 
 For failed downloads (e.g. 404 errors), `x` removes the entry from history. For successful downloads, it deletes the model from the provider (supported for Ollama and llama.cpp).
+
+### Community Benchmarks (`b`)
+
+Press `b` to open the Community Benchmarks view. Instead of relying solely on llmfit's theoretical speed estimates, this view shows **real-world performance data** from other users with the same hardware — actual measured tok/s, time-to-first-token, and peak VRAM usage.
+
+Data is sourced from [localmaxxing.com](https://localmaxxing.com), a community benchmark database. When you open the view, llmfit auto-detects your hardware (GPU model, VRAM tier, Apple Silicon chip family, OS) and queries for matching results.
+
+| Column       | Description                                              |
+|--------------|----------------------------------------------------------|
+| **Model**    | HuggingFace model ID                                     |
+| **Engine**   | Inference runtime used (llama.cpp, vLLM, Ollama, MLX...) |
+| **Quant**    | Quantization format (Q4_K_M, Q8_0, etc.)                |
+| **tok/s**    | Measured output token generation speed                   |
+| **Total t/s**| Total throughput (prompt + generation)                   |
+| **TTFT**     | Time to first token (latency)                            |
+| **VRAM**     | Peak memory usage during inference                       |
+| **Ctx**      | Context length used in the benchmark                     |
+| **User**     | Submitter (verified users marked with `*`)               |
+
+| Key                    | Action                                  |
+|------------------------|-----------------------------------------|
+| `j` / `k` or arrows   | Navigate results                        |
+| `r`                    | Refresh / re-fetch from API             |
+| `b` / `q` / `Esc`     | Close and return to model table         |
+
+#### API key setup
+
+Public benchmarks work without authentication. For full access, provide your [localmaxxing.com](https://localmaxxing.com) API key:
+
+```sh
+# Via environment variable (recommended)
+export LOCALMAXXING_API_KEY="bhk_your_key_here"
+llmfit
+
+# Or via CLI flag
+llmfit --api-key "bhk_your_key_here"
+```
+
+| Variable | Description |
+|---|---|
+| `LOCALMAXXING_API_KEY` | Bearer token for localmaxxing.com API |
 
 ### Themes
 
