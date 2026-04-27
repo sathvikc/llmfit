@@ -1,7 +1,6 @@
-//! Runtime model providers (Ollama, llama.cpp, MLX, Docker Model Runner, LM Studio).
+//! Runtime model providers (Ollama, llama.cpp, MLX, Docker Model Runner, LM Studio, vLLM).
 //!
 //! Each provider can list locally installed models and pull new ones.
-//! The trait is designed to be extended for vLLM, etc.
 
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -1879,6 +1878,197 @@ pub fn lmstudio_pull_tag(hf_name: &str) -> Option<String> {
 }
 
 // ---------------------------------------------------------------------------
+// vLLM provider
+// ---------------------------------------------------------------------------
+
+/// vLLM — high-throughput inference server with an OpenAI-compatible API.
+///
+/// Exposes `GET /v1/models` to list loaded models at
+/// `http://localhost:8000` by default. Override with `VLLM_HOST`.
+///
+/// vLLM does not have a pull/download endpoint — models are loaded at
+/// server start via HuggingFace. The `start_pull` implementation
+/// returns an informational error directing users to restart vLLM with
+/// the desired model.
+pub struct VllmProvider {
+    base_url: String,
+}
+
+fn normalize_vllm_host(raw: &str) -> Option<String> {
+    let host = raw.trim();
+    if host.is_empty() {
+        return None;
+    }
+
+    if host.starts_with("http://") || host.starts_with("https://") {
+        return Some(host.to_string());
+    }
+
+    if host.contains("://") {
+        return None;
+    }
+
+    Some(format!("http://{host}"))
+}
+
+impl Default for VllmProvider {
+    fn default() -> Self {
+        let base_url = std::env::var("VLLM_HOST")
+            .ok()
+            .and_then(|raw| {
+                let normalized = normalize_vllm_host(&raw);
+                if normalized.is_none() {
+                    eprintln!(
+                        "Warning: could not parse VLLM_HOST='{}'. \
+                         Expected host:port or http(s)://host:port",
+                        raw
+                    );
+                }
+                normalized
+            })
+            .unwrap_or_else(|| "http://localhost:8000".to_string());
+        Self { base_url }
+    }
+}
+
+impl VllmProvider {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    fn models_url(&self) -> String {
+        format!("{}/v1/models", self.base_url.trim_end_matches('/'))
+    }
+
+    /// Single-pass startup probe.
+    /// Returns `(available, installed_models, count)`.
+    pub fn detect_with_installed(&self) -> (bool, HashSet<String>, usize) {
+        let mut set = HashSet::new();
+        let Ok(resp) = ureq::get(&self.models_url())
+            .config()
+            .timeout_global(Some(std::time::Duration::from_millis(800)))
+            .build()
+            .call()
+        else {
+            return (false, set, 0);
+        };
+
+        let Ok(list) = resp.into_body().read_json::<VllmModelList>() else {
+            return (true, set, 0);
+        };
+        let models = list.data;
+        let count = models.len();
+        for m in models {
+            let lower = m.id.to_lowercase();
+            set.insert(lower.clone());
+            // Also insert the model part after the publisher
+            // e.g. "meta-llama/Llama-3.1-8B-Instruct" → "llama-3.1-8b-instruct"
+            if let Some(name) = lower.split('/').next_back()
+                && name != lower
+            {
+                set.insert(name.to_string());
+            }
+        }
+        (true, set, count)
+    }
+
+    pub fn installed_models_counted(&self) -> (HashSet<String>, usize) {
+        let (_, set, count) = self.detect_with_installed();
+        (set, count)
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct VllmModelList {
+    data: Vec<VllmModel>,
+}
+
+#[derive(serde::Deserialize)]
+struct VllmModel {
+    /// Model id, e.g. "meta-llama/Llama-3.1-8B-Instruct"
+    id: String,
+}
+
+impl ModelProvider for VllmProvider {
+    fn name(&self) -> &str {
+        "vLLM"
+    }
+
+    fn is_available(&self) -> bool {
+        ureq::get(&self.models_url())
+            .config()
+            .timeout_global(Some(std::time::Duration::from_secs(2)))
+            .build()
+            .call()
+            .is_ok()
+    }
+
+    fn installed_models(&self) -> HashSet<String> {
+        let (set, _) = self.installed_models_counted();
+        set
+    }
+
+    fn start_pull(&self, _model_tag: &str) -> Result<PullHandle, String> {
+        Err("vLLM does not support downloading models at runtime. \
+             Restart the vLLM server with the desired model \
+             (e.g. `vllm serve <model>`)."
+            .to_string())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// vLLM name-matching helpers
+// ---------------------------------------------------------------------------
+
+/// vLLM uses HuggingFace model names directly. We match against the
+/// model's full HF name and common naming patterns.
+pub fn hf_name_to_vllm_candidates(hf_name: &str) -> Vec<String> {
+    let repo = hf_name
+        .split('/')
+        .next_back()
+        .unwrap_or(hf_name)
+        .to_lowercase();
+    let mut candidates = vec![hf_name.to_lowercase()];
+    if repo != hf_name.to_lowercase() {
+        candidates.push(repo.clone());
+    }
+    // Strip common suffixes for matching
+    let stripped = repo
+        .replace("-instruct", "")
+        .replace("-chat", "")
+        .replace("-hf", "")
+        .replace("-it", "");
+    if stripped != repo {
+        candidates.push(stripped);
+    }
+    candidates
+}
+
+/// Check if any vLLM candidates for an HF model appear in the installed set.
+pub fn is_model_installed_vllm(hf_name: &str, installed: &HashSet<String>) -> bool {
+    let candidates = hf_name_to_vllm_candidates(hf_name);
+    candidates.iter().any(|candidate| {
+        installed
+            .iter()
+            .any(|installed_name| installed_name.contains(candidate))
+    })
+}
+
+/// vLLM can serve any HuggingFace model, so we always return true.
+pub fn has_vllm_mapping(hf_name: &str) -> bool {
+    !hf_name.is_empty()
+}
+
+/// Given an HF model name, return the model identifier to use for vLLM.
+/// vLLM accepts HF model names directly.
+pub fn vllm_pull_tag(hf_name: &str) -> Option<String> {
+    if hf_name.is_empty() {
+        return None;
+    }
+    Some(hf_name.to_string())
+}
+
+// ---------------------------------------------------------------------------
 // Docker Model Runner name-matching helpers
 // ---------------------------------------------------------------------------
 
@@ -3714,5 +3904,76 @@ mod tests {
             normalize_docker_mr_host("ftp://docker.example.com:12434"),
             None
         );
+    }
+
+    // ── vLLM ──────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_hf_name_to_vllm_candidates() {
+        let candidates = hf_name_to_vllm_candidates("meta-llama/Llama-3.1-8B-Instruct");
+        assert!(
+            candidates
+                .iter()
+                .any(|c| c == "meta-llama/llama-3.1-8b-instruct")
+        );
+        assert!(candidates.iter().any(|c| c == "llama-3.1-8b-instruct"));
+        // stripped variant (without -instruct)
+        assert!(candidates.iter().any(|c| c == "llama-3.1-8b"));
+    }
+
+    #[test]
+    fn test_is_model_installed_vllm() {
+        let mut installed = HashSet::new();
+        installed.insert("meta-llama/llama-3.1-8b-instruct".to_string());
+        assert!(is_model_installed_vllm(
+            "meta-llama/Llama-3.1-8B-Instruct",
+            &installed
+        ));
+        assert!(!is_model_installed_vllm(
+            "meta-llama/Llama-3.1-70B-Instruct",
+            &installed
+        ));
+    }
+
+    #[test]
+    fn test_has_vllm_mapping() {
+        assert!(has_vllm_mapping("meta-llama/Llama-3.1-8B-Instruct"));
+        assert!(!has_vllm_mapping(""));
+    }
+
+    #[test]
+    fn test_vllm_pull_tag() {
+        assert_eq!(
+            vllm_pull_tag("meta-llama/Llama-3.1-8B-Instruct"),
+            Some("meta-llama/Llama-3.1-8B-Instruct".to_string())
+        );
+        assert_eq!(vllm_pull_tag(""), None);
+    }
+
+    #[test]
+    fn test_normalize_vllm_host_with_scheme() {
+        assert_eq!(
+            normalize_vllm_host("http://myhost:8000"),
+            Some("http://myhost:8000".to_string())
+        );
+    }
+
+    #[test]
+    fn test_normalize_vllm_host_without_scheme() {
+        assert_eq!(
+            normalize_vllm_host("myhost:8000"),
+            Some("http://myhost:8000".to_string())
+        );
+    }
+
+    #[test]
+    fn test_normalize_vllm_host_rejects_unsupported_scheme() {
+        assert_eq!(normalize_vllm_host("ftp://myhost:8000"), None);
+    }
+
+    #[test]
+    fn test_normalize_vllm_host_empty() {
+        assert_eq!(normalize_vllm_host(""), None);
+        assert_eq!(normalize_vllm_host("  "), None);
     }
 }

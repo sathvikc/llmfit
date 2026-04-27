@@ -13,8 +13,8 @@ use crate::download_history::DownloadResult;
 use crate::theme::ThemeColors;
 use crate::tui_app::{
     AdvConfigField, App, AvailabilityFilter, DL_DOCKER, DL_LLAMACPP, DL_LMSTUDIO, DL_OLLAMA,
-    DownloadCapability, DownloadManagerFocus, DownloadProvider, FitFilter, InputMode, PlanField,
-    SimulationField,
+    DL_VLLM, DownloadCapability, DownloadManagerFocus, DownloadProvider, FitFilter, InputMode,
+    PlanField, SimulationField,
 };
 use llmfit_core::fit::{FitLevel, ModelFit, SortColumn};
 use llmfit_core::hardware::is_running_in_wsl;
@@ -193,6 +193,17 @@ fn draw_system_bar(frame: &mut Frame, app: &App, area: Rect, tc: &ThemeColors) {
         tc.muted
     };
 
+    let vllm_info = if app.vllm_available {
+        format!("vLLM: ✓ ({} models)", app.vllm_installed_count)
+    } else {
+        "vLLM: ✗".to_string()
+    };
+    let vllm_color = if app.vllm_available {
+        tc.good
+    } else {
+        tc.muted
+    };
+
     let mut hw_spans = Vec::new();
     if app.sim_active {
         hw_spans.push(Span::styled(
@@ -236,6 +247,8 @@ fn draw_system_bar(frame: &mut Frame, app: &App, area: Rect, tc: &ThemeColors) {
         Span::styled(docker_mr_info, Style::default().fg(docker_mr_color)),
         Span::styled("  │  ", Style::default().fg(tc.muted)),
         Span::styled(lmstudio_info, Style::default().fg(lmstudio_color)),
+        Span::styled("  │  ", Style::default().fg(tc.muted)),
+        Span::styled(vllm_info, Style::default().fg(vllm_color)),
     ];
 
     if app.backend_hidden_count > 0 {
@@ -675,6 +688,9 @@ fn draw_table(frame: &mut Frame, app: &mut App, area: Rect, tc: &ThemeColors) {
                             }
                             if flags & DL_LMSTUDIO != 0 {
                                 s.push('S');
+                            }
+                            if flags & DL_VLLM != 0 {
+                                s.push('V');
                             }
                             format!("{:>2}", s)
                         }
@@ -1615,11 +1631,15 @@ fn draw_detail(frame: &mut Frame, app: &App, area: Rect, tc: &ThemeColors) {
                 {
                     installed_providers.push("LM Studio");
                 }
+                if providers::is_model_installed_vllm(&fit.model.name, &app.vllm_installed) {
+                    installed_providers.push("vLLM");
+                }
                 let any_available = app.ollama_available
                     || app.mlx_available
                     || app.llamacpp_available
                     || app.docker_mr_available
-                    || app.lmstudio_available;
+                    || app.lmstudio_available
+                    || app.vllm_available;
 
                 if !installed_providers.is_empty() {
                     let label = installed_providers
@@ -2629,6 +2649,7 @@ fn draw_download_provider_popup(frame: &mut Frame, app: &App, tc: &ThemeColors) 
             DownloadProvider::LlamaCpp => "llama.cpp",
             DownloadProvider::DockerModelRunner => "Docker Model Runner",
             DownloadProvider::LmStudio => "LM Studio",
+            DownloadProvider::Vllm => "vLLM",
         };
         let is_cursor = i == app.download_provider_cursor;
         let prefix = if is_cursor { ">" } else { " " };
@@ -2679,7 +2700,8 @@ fn status_keys_and_mode(app: &App) -> (String, String) {
                 || app.mlx_available
                 || app.llamacpp_available
                 || app.docker_mr_available
-                || app.lmstudio_available;
+                || app.lmstudio_available
+                || app.vllm_available;
             let ollama_keys = if any_provider {
                 let installed_key = if app.installed_first {
                     "i:all"

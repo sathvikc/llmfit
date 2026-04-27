@@ -17,7 +17,7 @@ use llmfit_core::models::{LlmModel, ModelDatabase, UseCase};
 use llmfit_core::plan::{PlanRequest, estimate_model_plan};
 use llmfit_core::providers::{
     DockerModelRunnerProvider, LlamaCppProvider, LmStudioProvider, MlxProvider, ModelProvider,
-    OllamaProvider, PullEvent,
+    OllamaProvider, PullEvent, VllmProvider,
 };
 use serde::{Deserialize, Serialize};
 
@@ -425,6 +425,7 @@ async fn runtimes(State(_state): State<Arc<AppState>>) -> Json<serde_json::Value
         )
     });
     set.spawn_blocking(|| ("lmstudio", LmStudioProvider::new().is_available()));
+    set.spawn_blocking(|| ("vllm", VllmProvider::new().is_available()));
 
     let mut runtimes = Vec::new();
     let mut warnings = Vec::new();
@@ -468,6 +469,10 @@ async fn installed(State(_state): State<Arc<AppState>>) -> Json<serde_json::Valu
     set.spawn_blocking(|| {
         let p = LmStudioProvider::new();
         ("lmstudio", p.is_available(), p.installed_models())
+    });
+    set.spawn_blocking(|| {
+        let p = VllmProvider::new();
+        ("vllm", p.is_available(), p.installed_models())
     });
 
     let mut models = Vec::new();
@@ -557,6 +562,7 @@ async fn start_download(
             "llamacpp" => LlamaCppProvider::new().start_pull(&model_name),
             "docker_model_runner" => DockerModelRunnerProvider::new().start_pull(&model_name),
             "lmstudio" => LmStudioProvider::new().start_pull(&model_name),
+            "vllm" => VllmProvider::new().start_pull(&model_name),
             other => {
                 let _ = event_tx.send(PullEvent::Error(format!("unknown runtime: {other}")));
                 return;

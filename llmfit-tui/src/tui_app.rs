@@ -4,7 +4,7 @@ use llmfit_core::models::{Capability, ModelDatabase, UseCase};
 use llmfit_core::plan::{PlanEstimate, PlanRequest, estimate_model_plan};
 use llmfit_core::providers::{
     self, DockerModelRunnerProvider, LlamaCppProvider, LmStudioProvider, MlxProvider,
-    ModelProvider, OllamaProvider, PullEvent, PullHandle,
+    ModelProvider, OllamaProvider, PullEvent, PullHandle, VllmProvider,
 };
 
 use std::collections::{HashMap, HashSet};
@@ -335,6 +335,7 @@ pub enum DownloadProvider {
     LlamaCpp,
     DockerModelRunner,
     LmStudio,
+    Vllm,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -348,6 +349,7 @@ pub const DL_OLLAMA: u8 = 0b0001;
 pub const DL_LLAMACPP: u8 = 0b0010;
 pub const DL_DOCKER: u8 = 0b0100;
 pub const DL_LMSTUDIO: u8 = 0b1000;
+pub const DL_VLLM: u8 = 0b1_0000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ActivePullProvider {
@@ -356,6 +358,7 @@ enum ActivePullProvider {
     LlamaCpp,
     DockerModelRunner,
     LmStudio,
+    Vllm,
 }
 
 impl ActivePullProvider {
@@ -366,6 +369,7 @@ impl ActivePullProvider {
             ActivePullProvider::LlamaCpp => "llama.cpp",
             ActivePullProvider::DockerModelRunner => "Docker",
             ActivePullProvider::LmStudio => "LM Studio",
+            ActivePullProvider::Vllm => "vLLM",
         }
     }
 }
@@ -459,6 +463,10 @@ pub struct App {
     pub lmstudio_installed: HashSet<String>,
     pub lmstudio_installed_count: usize,
     lmstudio: LmStudioProvider,
+    pub vllm_available: bool,
+    pub vllm_installed: HashSet<String>,
+    pub vllm_installed_count: usize,
+    vllm: VllmProvider,
 
     // Download state
     pub pull_active: Option<PullHandle>,
@@ -601,6 +609,10 @@ impl App {
         let (lmstudio_available, lmstudio_installed, lmstudio_installed_count) =
             lmstudio.detect_with_installed();
 
+        // Detect vLLM
+        let vllm = VllmProvider::new();
+        let (vllm_available, vllm_installed, vllm_installed_count) = vllm.detect_with_installed();
+
         // Track how many we're skipping so the UI can surface it.
         let backend_hidden_count = db
             .get_all_models()
@@ -619,7 +631,8 @@ impl App {
                     || providers::is_model_installed_mlx(&m.name, &mlx_installed)
                     || providers::is_model_installed_llamacpp(&m.name, &llamacpp_installed)
                     || providers::is_model_installed_docker_mr(&m.name, &docker_mr_installed)
-                    || providers::is_model_installed_lmstudio(&m.name, &lmstudio_installed);
+                    || providers::is_model_installed_lmstudio(&m.name, &lmstudio_installed)
+                    || providers::is_model_installed_vllm(&m.name, &vllm_installed);
                 fit
             })
             .collect();
@@ -839,6 +852,10 @@ impl App {
             lmstudio_installed,
             lmstudio_installed_count,
             lmstudio,
+            vllm_available,
+            vllm_installed,
+            vllm_installed_count,
+            vllm,
             pull_active: None,
             pull_status: None,
             pull_percent: None,
@@ -2749,10 +2766,11 @@ impl App {
             || self.mlx_available
             || self.llamacpp_available
             || self.docker_mr_available
-            || self.lmstudio_available;
+            || self.lmstudio_available
+            || self.vllm_available;
         if !any_available {
             self.pull_status = Some(
-                "No runtime available — install Ollama, llama.cpp, Docker, or LM Studio"
+                "No runtime available — install Ollama, llama.cpp, Docker, LM Studio, or vLLM"
                     .to_string(),
             );
             return;
@@ -2781,11 +2799,13 @@ impl App {
                 || self.llamacpp_available
                 || self.mlx_available
                 || self.docker_mr_available
-                || self.lmstudio_available;
+                || self.lmstudio_available
+                || self.vllm_available;
             self.pull_status = Some(if any_runtime {
                 Self::format_no_download_message(model_format, is_mlx_model)
             } else {
-                "No runtime available — install Ollama, llama.cpp, Docker, or LM Studio".to_string()
+                "No runtime available — install Ollama, llama.cpp, Docker, LM Studio, or vLLM"
+                    .to_string()
             });
         }
     }
@@ -2842,6 +2862,7 @@ impl App {
             DownloadProvider::LlamaCpp => self.start_llamacpp_download_for_model(model_name),
             DownloadProvider::DockerModelRunner => self.start_docker_mr_download(model_name),
             DownloadProvider::LmStudio => self.start_lmstudio_download(model_name),
+            DownloadProvider::Vllm => self.start_vllm_download(model_name),
         }
     }
 
@@ -2927,6 +2948,25 @@ impl App {
             }
             Err(e) => {
                 self.pull_status = Some(format!("LM Studio download failed: {}", e));
+            }
+        }
+    }
+
+    fn start_vllm_download(&mut self, model_name: String) {
+        let Some(tag) = providers::vllm_pull_tag(&model_name) else {
+            self.pull_status = Some("Not available for vLLM".to_string());
+            return;
+        };
+        match self.vllm.start_pull(&tag) {
+            Ok(handle) => {
+                self.pull_model_name = Some(model_name);
+                self.pull_status = Some(format!("Downloading {} via vLLM...", tag));
+                self.pull_percent = Some(0.0);
+                self.pull_provider = Some(ActivePullProvider::Vllm);
+                self.pull_active = Some(handle);
+            }
+            Err(e) => {
+                self.pull_status = Some(format!("vLLM: {}", e));
             }
         }
     }
@@ -3040,6 +3080,9 @@ impl App {
         if self.lmstudio_available && providers::has_lmstudio_mapping(model_name) {
             providers_for_model.push(DownloadProvider::LmStudio);
         }
+        if self.vllm_available && providers::has_vllm_mapping(model_name) {
+            providers_for_model.push(DownloadProvider::Vllm);
+        }
         providers_for_model
     }
 
@@ -3107,6 +3150,9 @@ impl App {
         let (lmstudio_set, lmstudio_count) = self.lmstudio.installed_models_counted();
         self.lmstudio_installed = lmstudio_set;
         self.lmstudio_installed_count = lmstudio_count;
+        let (vllm_set, vllm_count) = self.vllm.installed_models_counted();
+        self.vllm_installed = vllm_set;
+        self.vllm_installed_count = vllm_count;
         for fit in &mut self.all_fits {
             fit.installed = providers::is_model_installed(&fit.model.name, &self.ollama_installed)
                 || providers::is_model_installed_mlx(&fit.model.name, &self.mlx_installed)
@@ -3121,7 +3167,8 @@ impl App {
                 || providers::is_model_installed_lmstudio(
                     &fit.model.name,
                     &self.lmstudio_installed,
-                );
+                )
+                || providers::is_model_installed_vllm(&fit.model.name, &self.vllm_installed);
         }
         self.re_sort();
         self.enqueue_capability_probes_for_visible(24);
@@ -3163,6 +3210,7 @@ impl App {
         let llamacpp_available = self.llamacpp_available;
         let docker_mr_available = self.docker_mr_available;
         let lmstudio_available = self.lmstudio_available;
+        let vllm_available = self.vllm_available;
         std::thread::spawn(move || {
             let has_ollama = ollama_runtime_available && providers::has_ollama_mapping(&model_name);
             let has_llamacpp = if llamacpp_available {
@@ -3173,6 +3221,7 @@ impl App {
             };
             let has_docker = docker_mr_available && providers::has_docker_mr_mapping(&model_name);
             let has_lmstudio = lmstudio_available && providers::has_lmstudio_mapping(&model_name);
+            let has_vllm = vllm_available && providers::has_vllm_mapping(&model_name);
 
             let mut flags = 0u8;
             if has_ollama {
@@ -3186,6 +3235,9 @@ impl App {
             }
             if has_lmstudio {
                 flags |= DL_LMSTUDIO;
+            }
+            if has_vllm {
+                flags |= DL_VLLM;
             }
             let _ = tx.send((model_name, DownloadCapability::Known(flags)));
         });
